@@ -3,6 +3,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Load .env for local development. Optional by design: Docker and CI inject
+# environment variables directly, so the app must work without this file.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+except ImportError:
+    pass
+
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"file://{ROOT / 'mlruns'}")
 EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT", "churn-prediction")
 REGISTERED_MODEL_NAME = os.getenv("MODEL_NAME", "churn-classifier")

@@ -7,7 +7,32 @@ mlartifacts/
 models/*
 !models/.gitkeep
 data/*.csv
-.env
 .pytest_cache/
 .DS_Store
 *.pkl
+
+# ── Secrets ───────────────────────────────────────────────────────────────
+# .env.example IS committed; every real .env variant is not.
+.env
+.env.*
+!.env.example
+*.local
+
+# Credentials and keys of any kind
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+secrets.y*ml
+.secrets/
+
+# Cloud provider config
+.aws/
+.gcloud/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
