@@ -135,8 +135,14 @@ def _frame(payloads: list[dict]) -> pd.DataFrame:
     return df[FEATURES]
 
 
-def _get_explainer():
-    """Built lazily — SHAP import is heavy and only needed on /explain."""
+def _get_explainer(background=None):
+    """Built lazily — SHAP import is heavy and only needed when explaining.
+
+    TreeExplainer covers the tree models (XGBoost, RandomForest) and needs no
+    background data. Linear models do need it, so the caller passes the batch
+    being explained; that is a weak reference distribution but adequate for
+    ranking a single customer's top contributors.
+    """
     global _explainer
     if _explainer is not None:
         return _explainer
@@ -146,8 +152,11 @@ def _get_explainer():
     est = _model.named_steps["model"]
     try:
         _explainer = shap.TreeExplainer(est)
-    except Exception:  # noqa: BLE001 — linear/other models
-        _explainer = shap.Explainer(est)
+    except Exception as exc:  # noqa: BLE001 — not a tree model
+        log.info("TreeExplainer unavailable (%s), trying LinearExplainer", exc)
+        if background is None:
+            raise
+        _explainer = shap.LinearExplainer(est, background)
     _explainer._feature_names = list(pre.get_feature_names_out())
     return _explainer
 
@@ -157,8 +166,8 @@ def explain(df: pd.DataFrame, top_k: int = 4) -> list[list[dict]]:
     if model is None:
         return [[] for _ in range(len(df))]
     try:
-        explainer = _get_explainer()
         Xt = model.named_steps["preprocess"].transform(df)
+        explainer = _get_explainer(background=Xt)
         values = explainer.shap_values(Xt)
         names = explainer._feature_names
         out = []
