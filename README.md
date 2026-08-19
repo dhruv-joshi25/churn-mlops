@@ -52,8 +52,10 @@ make install
 make train        # logs to MLflow, registers the model
 make mlflow       # UI at :5000 to compare runs
 make api          # docs at :8000/docs
+make install-ui   # Streamlit deps, kept out of the API image
+make ui           # portal at :8501 (needs the API running)
 make test
-make up           # mlflow + api together via compose
+make up           # mlflow + api + ui together via compose
 ```
 
 ## Endpoints
@@ -111,6 +113,7 @@ comparing runs.
 ```
 src/
   schema.py       feature contract, shared by training and serving
+  labels.py       readable names for encoded SHAP feature columns
   config.py       env-driven settings
   data.py         cleaning applied identically at train and serve time
   preprocess.py   ColumnTransformer with pinned categories
@@ -119,6 +122,8 @@ src/
     models.py     pydantic request/response validation
     predict.py    model loading, inference, SHAP, retention hook
     main.py       FastAPI app
+app/
+  streamlit_app.py  portal; talks to the API over HTTP, never loads a model
 tests/            run green with no model present
 .github/workflows/ci.yml
 ```

@@ -1,7 +1,10 @@
-.PHONY: install train mlflow api test docker up down
+.PHONY: install install-ui train mlflow api ui test docker up down
 
 install:
 	pip install -r requirements.txt
+
+install-ui:
+	pip install -r requirements-ui.txt
 
 train:
 	python -m src.train --model xgboost --register
@@ -11,6 +14,9 @@ mlflow:
 
 api:
 	uvicorn src.api.main:app --reload --port 8000
+
+ui:
+	streamlit run app/streamlit_app.py --server.port 8501
 
 test:
 	pytest -q

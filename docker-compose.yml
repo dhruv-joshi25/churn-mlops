@@ -23,18 +23,18 @@ services:
     depends_on:
       - mlflow
 
-  # Sanjida's Streamlit portal talks to the API over the compose network.
-  # Uncomment once app/streamlit_app.py exists.
-  # ui:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.streamlit
-  #   ports:
-  #     - "8501:8501"
-  #   environment:
-  #     API_URL: http://api:8000
-  #   depends_on:
-  #     - api
+  # The Streamlit portal talks to the API over the compose network. It never
+  # loads a model itself — API_URL is the only way it gets a prediction.
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      - api
 
 volumes:
   mlflow_data:
