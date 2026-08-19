@@ -491,7 +491,8 @@ develop   integration branch
 feat/...  features off develop
 ```
 
-Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
+Commit messages: a plain sentence saying what the change does, capitalised, with
+no `type:` prefix. Add body paragraphs when the reasoning is worth recording.
 
 Do not commit: the CSV, `mlruns/`, `.env`, model binaries. All already in
 `.gitignore`.
