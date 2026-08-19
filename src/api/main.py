@@ -44,6 +44,8 @@ def health():
         status="ok" if loaded else "degraded",
         model_loaded=loaded,
         model_version=engine.version() if loaded else None,
+        threshold=engine.threshold() if loaded else None,
+        threshold_source=engine.threshold_source() if loaded else None,
     )
 
 
@@ -53,7 +55,12 @@ def reload_model():
     model = engine.load_model(force=True)
     if model is None:
         raise HTTPException(503, "no model available to load")
-    return {"reloaded": True, "model_version": engine.version()}
+    return {
+        "reloaded": True,
+        "model_version": engine.version(),
+        "threshold": engine.threshold(),
+        "threshold_source": engine.threshold_source(),
+    }
 
 
 @app.post("/predict", response_model=Prediction, tags=["inference"])

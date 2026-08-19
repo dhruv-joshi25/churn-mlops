@@ -19,7 +19,7 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MODEL_NAME: churn-classifier
       MODEL_STAGE: Production
-      DECISION_THRESHOLD: "${DECISION_THRESHOLD:-0.5}"
+      DECISION_THRESHOLD: "${DECISION_THRESHOLD:-}"
     depends_on:
       - mlflow
 

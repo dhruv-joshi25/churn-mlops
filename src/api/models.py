@@ -70,6 +70,9 @@ class Prediction(BaseModel):
     risk_band: Literal["Low", "Medium", "High"]
     will_churn: bool
     threshold: float
+    # Where the cutoff came from: the model's own run, an env override, or the
+    # fallback. Makes an accidental 0.5 visible instead of silent.
+    threshold_source: str
     top_reasons: list[Reason] = []
     retention_recommendation: str | None = None
     model_version: str
@@ -87,3 +90,5 @@ class Health(BaseModel):
     status: str
     model_loaded: bool
     model_version: str | None = None
+    threshold: float | None = None
+    threshold_source: str | None = None

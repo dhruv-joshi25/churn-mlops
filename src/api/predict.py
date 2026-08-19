@@ -22,6 +22,31 @@ _lock = threading.Lock()
 _model = None
 _explainer = None
 _version = "unloaded"
+_threshold = config.FALLBACK_THRESHOLD
+_threshold_source = "fallback"
+
+
+def _threshold_from_registry() -> tuple[float, str] | None:
+    """Read the cutoff train.py chose off the run that produced this version.
+
+    Returns None if the tag is absent, which means the model was logged by
+    something that did not record its threshold — worth a warning, because
+    serving such a model means falling back to an arbitrary cutoff.
+    """
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient()
+    versions = client.get_latest_versions(
+        config.REGISTERED_MODEL_NAME, stages=[config.MODEL_STAGE]
+    )
+    if not versions:
+        return None
+
+    mv = versions[0]
+    tag = client.get_run(mv.run_id).data.tags.get("decision_threshold")
+    if tag is None:
+        return None
+    return float(tag), f"model v{mv.version} (run {mv.run_id[:8]})"
 
 
 def _try_registry():
@@ -30,31 +55,67 @@ def _try_registry():
     mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
     uri = f"models:/{config.REGISTERED_MODEL_NAME}/{config.MODEL_STAGE}"
     model = mlflow.sklearn.load_model(uri)
-    return model, f"{config.REGISTERED_MODEL_NAME}@{config.MODEL_STAGE}"
+
+    resolved = None
+    try:
+        resolved = _threshold_from_registry()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not read threshold from registry: %s", exc)
+
+    return model, f"{config.REGISTERED_MODEL_NAME}@{config.MODEL_STAGE}", resolved
 
 
 def _try_local():
     import mlflow
 
     model = mlflow.sklearn.load_model(config.LOCAL_MODEL_PATH)
-    return model, "local"
+    # A bare artifact directory carries no run metadata, so no threshold.
+    return model, "local", None
+
+
+def _resolve_threshold(from_model: tuple[float, str] | None) -> tuple[float, str]:
+    """Operator override beats the model; the model beats an arbitrary 0.5."""
+    if config.DECISION_THRESHOLD_OVERRIDE is not None:
+        return config.DECISION_THRESHOLD_OVERRIDE, "env override (DECISION_THRESHOLD)"
+    if from_model is not None:
+        return from_model
+    log.warning(
+        "no threshold logged with this model and no override set — falling back "
+        "to %s, which is not a defensible cutoff",
+        config.FALLBACK_THRESHOLD,
+    )
+    return config.FALLBACK_THRESHOLD, "fallback (no threshold logged)"
 
 
 def load_model(force: bool = False):
-    global _model, _explainer, _version
+    global _model, _explainer, _version, _threshold, _threshold_source
     with _lock:
         if _model is not None and not force:
             return _model
         for loader in (_try_registry, _try_local):
             try:
-                _model, _version = loader()
+                _model, _version, from_model = loader()
+                _threshold, _threshold_source = _resolve_threshold(from_model)
                 _explainer = None
-                log.info("loaded model: %s", _version)
+                log.info(
+                    "loaded model: %s (threshold %.4f from %s)",
+                    _version,
+                    _threshold,
+                    _threshold_source,
+                )
                 return _model
             except Exception as exc:  # noqa: BLE001
                 log.warning("%s failed: %s", loader.__name__, exc)
         _version = "unloaded"
         return None
+
+
+def threshold() -> float:
+    return _threshold
+
+
+def threshold_source() -> str:
+    return _threshold_source
 
 
 def is_loaded() -> bool:
@@ -135,7 +196,7 @@ def recommend(payload: dict, prob: float) -> str | None:
     Kept behind this function so her rules drop in without touching the API.
     Note these are hypotheses to A/B test, not proven causal levers.
     """
-    if prob < config.DECISION_THRESHOLD:
+    if prob < threshold():
         return None
     if payload.get("Contract") == "Month-to-month":
         return "Offer a one-year contract with a discounted monthly rate."
@@ -155,6 +216,7 @@ def predict(payloads: list[dict], with_reasons: bool = True) -> list[dict]:
     probs = model.predict_proba(df)[:, 1]
     reasons = explain(df) if with_reasons else [[] for _ in payloads]
 
+    cutoff = threshold()
     results = []
     for payload, p, r in zip(payloads, probs, reasons):
         p = float(p)
@@ -162,8 +224,9 @@ def predict(payloads: list[dict], with_reasons: bool = True) -> list[dict]:
             {
                 "churn_probability": round(p, 4),
                 "risk_band": risk_band(p),
-                "will_churn": p >= config.DECISION_THRESHOLD,
-                "threshold": config.DECISION_THRESHOLD,
+                "will_churn": p >= cutoff,
+                "threshold": cutoff,
+                "threshold_source": _threshold_source,
                 "top_reasons": r,
                 "retention_recommendation": recommend(payload, p),
                 "model_version": _version,

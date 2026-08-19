@@ -71,7 +71,9 @@ def pick_threshold(y_true, y_prob) -> tuple[float, float]:
         fp = int(((flagged) & (y_true == 0)).sum())
         value = tp * VALUE_CUSTOMER_SAVED - (tp + fp) * COST_RETENTION_OFFER
         if value > best_value:
-            best_t, best_value = float(t), float(value)
+            # Round here: linspace yields values like 0.36999999999999994, which
+            # then surface in API responses and the report.
+            best_t, best_value = round(float(t), 4), float(value)
     return best_t, best_value
 
 
