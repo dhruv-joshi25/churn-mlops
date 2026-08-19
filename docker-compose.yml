@@ -1,0 +1,40 @@
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: churn-classifier
+      MODEL_STAGE: Production
+      DECISION_THRESHOLD: "0.5"
+    depends_on:
+      - mlflow
+
+  # Sanjida's Streamlit portal talks to the API over the compose network.
+  # Uncomment once app/streamlit_app.py exists.
+  # ui:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.streamlit
+  #   ports:
+  #     - "8501:8501"
+  #   environment:
+  #     API_URL: http://api:8000
+  #   depends_on:
+  #     - api
+
+volumes:
+  mlflow_data:

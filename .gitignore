@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+mlruns/
+mlartifacts/
+models/*
+!models/.gitkeep
+data/*.csv
+.env
+.pytest_cache/
+.DS_Store
+*.pkl
