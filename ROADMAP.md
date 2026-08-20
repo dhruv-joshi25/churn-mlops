@@ -1,485 +1,322 @@
-# Customer Churn Prediction — Build Roadmap
+# Churn Platform — Build Roadmap
 
-**Team:** Sanjida (ML, SHAP, retention logic) · Dhruv (MLOps, API, deployment)
-**Status as of 19 Aug 2026:** XGBoost baseline trained. MLOps not started.
-
----
-
-## How to use this document
-
-Work through phases in order **within your own track**. The two tracks run in
-parallel and meet at three **integration gates**. Do not start a phase until its
-entry condition is met, and do not call a phase done until every box in its
-Definition of Done is ticked.
-
-Each phase says who owns it. If a phase says "both," it needs a call, not a
-WhatsApp message.
+**Team:** Sanjida (ML, SHAP, retention logic) · Dhruv (platform, API, MLOps)
+**Status as of 20 Aug 2026:** Telco reference implementation working end to end.
+Platform pivot starting.
 
 ---
 
-## Phase 0 — Already done (LOCKED, do not redo)
+## What we are actually building
 
-This work is complete and correct. It is recorded here so nobody repeats it and
-so the report has an accurate account of what was built.
+An **open-source churn prediction platform** that any company can point at its
+own data. Not a model trained on one fixed dataset — a system that trains a
+model on *your* data:
 
-| # | Item | Detail |
-| --- | --- | --- |
-| 0.1 | Dataset acquired | Telco Customer Churn — 7043 rows, 21 columns |
-| 0.2 | Missing values checked | Blank strings identified in `TotalCharges` |
-| 0.3 | `TotalCharges` converted | String → numeric |
-| 0.4 | `customerID` dropped | Non-predictive identifier removed |
-| 0.5 | EDA completed | `Contract`, `MonthlyCharges`, `tenure` analysed against churn |
-| 0.6 | Categorical encoding | Categoricals encoded for modelling |
-| 0.7 | Train/test split | 80/20 |
-| 0.8 | XGBoost baseline | Trained successfully |
+1. A company uploads its customer CSV.
+2. The system profiles it — identifies and maps the columns, works out what is
+   numeric, categorical, a date, an identifier, and which column is the target.
+3. It cleans and preprocesses accordingly.
+4. It trains XGBoost on that company's historical churn.
+5. Every customer gets a churn score, a SHAP explanation of *why*, and a
+   suggested retention action.
+6. MLOps around all of it: tracking, deployment, monitoring, and retraining as
+   new data arrives.
 
-**One thing to verify, not redo (5 minutes):** confirm the encoder in 0.6 was
-fit *after* the split in 0.7, not before. If it was fit on the full dataset, the
-baseline metrics are mildly optimistic. Either way the model stands — just note
-it, and the pipeline in Phase 2 fixes it going forward.
+The test of every decision in this document: **would it still work if the next
+CSV had completely different columns?** If the answer is no, it is not
+platform code.
 
 ---
 
-## The integration contract
+## What exists today, honestly
 
-Everything downstream depends on one agreement. Fix it now, in writing.
+The repository currently contains a **working single-dataset implementation**
+built on the Telco churn CSV. It is not wasted work — it proves the serving
+architecture and it is the reference every platform component gets checked
+against. But it hardcodes one schema.
 
-**The deliverable from the ML track is a single sklearn `Pipeline`** whose first
-step is preprocessing and last step is the classifier. It accepts a raw
-DataFrame with the 19 columns listed in `src/schema.py` — not pre-encoded input.
+| Built and verified | Where |
+| --- | --- |
+| Training with MLflow tracking + model registry | `src/train.py` |
+| Cost-based threshold, logged with the model | `src/train.py`, `src/api/predict.py` |
+| FastAPI service — predict, batch, health, reload | `src/api/` |
+| SHAP reasons with readable labels | `src/api/predict.py`, `src/labels.py` |
+| Streamlit portal, talks to the API over HTTP only | `app/streamlit_app.py` |
+| Docker, compose, CI, tests | root, `.github/workflows/` |
 
-```python
-import mlflow
-mlflow.sklearn.log_model(pipe, "model", registered_model_name="churn-classifier")
+Trained model in the registry: `churn-classifier` v2, Production,
+PR-AUC 0.658, recall 0.87, threshold 0.31.
+
+**Known gap:** the compose stack starts a fresh MLflow with an empty database,
+so the containerised API has no model to load and reports `degraded`. Fixed in
+Stage 4 when training becomes a service rather than a local script.
+
+---
+
+## The one change everything depends on
+
+Right now the feature contract lives in **source code**. `src/schema.py` lists
+Telco's 19 columns and pins every allowed category value, and the rest of the
+system reads it at import time:
+
+- `src/preprocess.py:28` — OneHotEncoder categories come from `CATEGORY_VALUES`
+- `src/data.py:33` — the target is literally compared against `"Yes"`
+- `src/api/models.py` — every request field is a `Literal[...]` fixed at import
+- `app/streamlit_app.py` — form dropdowns are rendered from the same lists
+
+Pinning the schema was the *right* decision for one dataset: it is what stops
+train/serve skew. But a platform learns its schema at upload time, so the schema
+has to stop being code and start being **data** — inferred from the CSV, saved
+as an artifact next to the model, and loaded back at serve time.
+
+We have already solved this exact problem once. The decision threshold is chosen
+during training, logged with the model, and read back by the API so it can never
+drift out of sync. **The schema gets the same treatment.** One model version
+carries three things that must always travel together:
+
+```
+model version = the fitted Pipeline
+              + the schema artifact it was trained on
+              + the decision threshold chosen for it
 ```
 
-Why this matters: if only the XGBoost booster is saved, the encoders stay in the
-notebook as loose variables and the API has to reimplement preprocessing by
-hand. Doing that identically is very hard, and getting it subtly wrong is the
-single most common bug in deployed ML — the model sees different features in
-production than it saw in training, and accuracy silently collapses.
-
-**Column names are owned by `src/schema.py`.** Neither person renames a feature
-without changing that file and telling the other.
+If those three ever separate, predictions are silently wrong. That is the single
+invariant this whole platform rests on.
 
 ---
 
-## Work split
+## Stage 1 — Schema becomes data
 
-| Track A — Sanjida | Track B — Dhruv |
-| --- | --- |
-| Model evaluation & tuning | Repo, branches, CI |
-| Pipeline packaging | MLflow server & registry |
-| SHAP explainability | FastAPI service |
-| Retention rule design | Docker & compose |
-| Streamlit UI content | Deployment & monitoring |
-| Report: modelling sections | Report: architecture sections |
-
----
-
-# TRACK A — Machine Learning (Sanjida)
-
-## Phase A1 — Evaluate the baseline properly
-
-**Entry:** Phase 0 complete. ✅ You are here.
+**Owner:** Dhruv. **Blocks everything else.**
 
 **Tasks**
-1. Compute on the test set: precision, recall, F1, ROC-AUC, **PR-AUC**, and the
-   confusion matrix.
-2. Note the churn rate (~26.5%). Write down explicitly why accuracy is not being
-   reported as a headline number.
-3. Plot the precision-recall curve, not just ROC. On imbalanced data ROC-AUC
-   looks flattering; PR-AUC is the honest comparison metric.
+1. Write `src/profiler.py` — reads a DataFrame, returns a schema object: per
+   column, its role (target / id / date / numeric / categorical / drop), dtype,
+   observed categories, missing rate, cardinality.
+2. Serialise that schema to JSON and log it as an MLflow artifact on the run.
+3. Rewrite `build_preprocessor()` to take a schema argument instead of importing
+   pinned constants.
+4. Rewrite `clean()` and `split_xy()` to be schema-driven — no column named in
+   code.
+5. Build the pydantic request model at runtime from the loaded schema
+   (`pydantic.create_model`) instead of declaring it statically.
+6. Render the Streamlit form from the loaded schema.
+7. Keep `schema.py` as a Telco *fixture* used by tests, not as the live contract.
 
 **Definition of Done**
-- [ ] All six metrics recorded for the baseline
-- [ ] Confusion matrix saved as an image for the report
-- [ ] One paragraph written on why PR-AUC is the primary comparison metric
+- [ ] A CSV with entirely different column names trains without code changes
+- [ ] The API validates requests against the uploaded schema, not Telco's
+- [ ] Telco still trains and serves with identical metrics to today
+- [ ] Schema artifact visible on the MLflow run
 
-**Common failure:** reporting 80% accuracy as a success. A model predicting "no
-churn" for everyone scores 73.5%. Always state that number as the baseline to
-beat.
+**Failure to avoid:** inferring categories at serve time instead of reading the
+saved artifact. That reintroduces exactly the skew the pinning was preventing.
 
 ---
 
-## Phase A2 — Handle imbalance and tune
+## 🚦 GATE 1 — Two different datasets, one codebase
 
-**Entry:** A1 done.
+Train on Telco and on any second, structurally different churn CSV. Both serve
+predictions through the same API with no code edited between them.
 
-**Tasks**
-1. Set `scale_pos_weight = n_negative / n_positive` in XGBoost (≈2.77). Compare
-   against `class_weight='balanced'` alternatives.
-2. If trying SMOTE, apply it **inside CV folds only**, never before splitting.
-   Honestly, `scale_pos_weight` usually wins on this dataset and is easier to
-   defend — try SMOTE only if you have time.
-3. Tune with 5-fold stratified CV: `max_depth` (3–6), `learning_rate`
-   (0.01–0.1), `n_estimators`, `subsample`, `colsample_bytree`, `reg_lambda`.
-4. Train Logistic Regression and Random Forest as comparison models. You need
-   more than one model in the report, and logistic regression is the
-   interpretable baseline that makes XGBoost's gain meaningful.
+Until this passes, nothing else is worth building.
+
+---
+
+## Stage 2 — Make it trustworthy
+
+**Owner:** Sanjida leads the statistics, Dhruv wires them in.
+
+This stage is what separates a real product from a demo. On arbitrary company
+data, a model that looks excellent is usually broken.
+
+**2.1 Leakage detection** — the highest-value item in this document.
+A column like `cancellation_reason` or `refund_date` is recorded *after* churn
+and will produce a near-perfect model that is worthless in production. Flag
+columns that predict the target almost alone, columns whose missingness aligns
+with the target, and columns named like post-outcome events. Report them to the
+user and exclude by default:
+> *Dropping `exit_survey_score` — it appears to be recorded after the customer
+> left, so it cannot be used to predict churn in advance.*
+
+**2.2 Churn label builder**
+Most companies do not have a `Churn` column. They have subscriptions or
+transactions, and churn must be *defined*: "no purchase in 90 days",
+"subscription ended and not renewed". Without this, the platform only serves
+companies that already did the hard part.
+
+**2.3 Time-based validation**
+A random train/test split leaks the future into the past and overstates churn
+performance. When a date column exists, split temporally — train before date T,
+test after.
+
+**2.4 Probability calibration**
+Raw XGBoost scores are not probabilities. If the UI says "72% likely to churn",
+that should mean roughly 72 of 100 such customers actually leave. Add isotonic
+or Platt calibration and log a reliability curve.
+
+**2.5 Data-quality gate**
+Row count, churner count, missingness, constant columns, duplicate IDs. Refuse
+politely when the data cannot support a model rather than training anyway:
+> *Only 41 churned customers found. Results will not be reliable below ~200.*
+
+**2.6 Always train a baseline**
+Run logistic regression alongside XGBoost and report both. If the simple model
+wins on their data, say so.
 
 **Definition of Done**
-- [ ] Three model families trained and compared on PR-AUC
-- [ ] Best hyperparameters recorded
-- [ ] Comparison table ready for the report
-
-**Common failure:** tuning against the test set. Tune on CV over training data;
-touch the test set once, at the end.
+- [ ] A deliberately leaky column is caught and reported on a test CSV
+- [ ] Churn can be derived from a dataset with no churn column
+- [ ] Calibration curve logged per run
+- [ ] Training refuses on data that is too small or too imbalanced
 
 ---
 
-## Phase A3 — Choose the decision threshold
+## Stage 3 — Make it actionable
 
-**Entry:** A2 done. **This is the most valuable phase in the project.**
+**Owner:** Sanjida owns the business logic, Dhruv owns the plumbing.
 
-A model outputs a probability. Turning it into a "will churn" decision needs a
-cutoff, and 0.5 is an arbitrary default that nobody defends when asked.
+A probability is not a decision. This stage turns scores into something a
+retention team acts on.
 
-**Tasks**
-1. Agree two numbers with the team:
-   - Cost of giving one retention offer (e.g. ₹200 discount)
-   - Value of retaining one customer who would have churned (e.g. ₹1200 LTV)
-2. Sweep thresholds 0.05→0.95 on **out-of-fold training predictions**.
-3. At each threshold compute expected value:
-   `TP × value_saved − (TP + FP) × cost_of_offer`
-4. Pick the maximum. Record it. `src/train.py` already implements this —
-   `pick_threshold()`.
+**3.1 Per-company cost inputs**
+The threshold logic is already the strongest idea in the project, but
+`COST_RETENTION_OFFER = 200` and `VALUE_CUSTOMER_SAVED = 1200` are Telco
+guesses. Ask each company what an offer costs them and what a customer is worth,
+store it with their project, and derive *their* cutoff from *their* economics.
+
+**3.2 Revenue at risk**
+Rank by value × probability, not probability alone. "₹18.2L of ARR at risk"
+moves a business; "347 customers flagged" does not.
+
+**3.3 Action worklist export**
+The real Monday-morning deliverable: top N customers with score, top reasons,
+recommended offer, and the expected value of intervening — as CSV, later pushed
+to a CRM. This is the product. The model is just how it gets computed.
+
+**3.4 Retention playbooks**
+Replace the hardcoded rules in `recommend()` with rules a company writes against
+their own features and SHAP drivers, plus starter templates per industry.
 
 **Definition of Done**
-- [ ] Cost assumptions written down and justified
-- [ ] Threshold chosen on out-of-fold data, not test data
-- [ ] Expected-value curve plotted for the report
-- [ ] Threshold communicated to Dhruv (it becomes `DECISION_THRESHOLD`)
-
-**Why it matters:** this converts "our ROC-AUC is 0.84" into "this model saves
-approximately ₹X per 1000 customers." That sentence is what an evaluator or an
-interviewer actually remembers.
+- [ ] Threshold derived from company-supplied costs
+- [ ] Worklist CSV downloadable from the UI
+- [ ] Zero Telco-specific strings left in `recommend()`
 
 ---
 
-## Phase A4 — Package as a Pipeline
+## Stage 4 — Make it a platform
 
-**Entry:** A3 done. **→ Feeds Integration Gate 1.**
+**Owner:** Dhruv.
 
-**Tasks**
-1. Rebuild the winning model as `Pipeline([('preprocess', ...), ('model', ...)])`
-   using `src/preprocess.py`. Do not hand-encode.
-2. Confirm `pipe.predict_proba(raw_df)` works on a raw, unencoded DataFrame.
-3. Verify the refit pipeline reproduces A2's metrics (small differences are fine;
-   large ones mean the encoding changed).
+**4.1 Projects and isolation** — a company's uploads, schemas, models, and
+settings live under a project id. One MLflow experiment and one registered model
+name per project.
+
+**4.2 Training as an async job** — upload → queue → profile → quality gate →
+train → report. Not a CLI invocation. Status visible while it runs.
+
+**4.3 Model cache per project** — `predict.py` currently holds one global
+`_model` singleton. It needs a keyed cache with the schema and threshold bound
+to each entry.
+
+**4.4 Log every prediction** — features, score, model version, timestamp.
+Cheap now, impossible to reconstruct later, and a hard prerequisite for
+everything in Stage 5.
+
+**4.5 Fix the compose gap** — with training as a service, the containerised
+MLflow gets populated properly and `/health` stops reporting `degraded`.
 
 **Definition of Done**
-- [ ] Pipeline accepts raw DataFrame
-- [ ] Metrics reproduced within tolerance
-- [ ] `pipe` handed to Dhruv or logged to MLflow
+- [ ] Two projects with different schemas served by one API simultaneously
+- [ ] Upload to scored output with no shell access
+- [ ] `docker compose up` produces a working stack from empty state
 
 ---
 
-## Phase A5 — SHAP explainability
+## 🚦 GATE 2 — Upload to insight, in a browser
 
-**Entry:** A4 done.
+A person who has never seen the code uploads a CSV, waits, and gets scored
+customers with reasons and recommended actions. No terminal involved.
 
-**Tasks**
-1. `shap.TreeExplainer` on the model step, applied to preprocessed features.
-2. Global: summary/beeswarm plot — which features drive churn overall.
-3. Local: per-customer top-4 contributing features with direction.
-4. Map one-hot column names back to readable labels (`Contract_Month-to-month`
-   → "Month-to-month contract"). Nobody wants raw column names in a UI.
+**Record this.** It is the demo.
+
+---
+
+## Stage 5 — Monitoring, retraining, and proof
+
+**Owner:** Dhruv, with Sanjida on the measurement design.
+
+Unlike the old fixed-dataset project, a real platform genuinely receives new
+data over time, so monitoring here is honest rather than simulated.
+
+**5.1 Drift monitoring** — per-feature PSI against the training distribution,
+plus prediction distribution shift. A population that has changed shape is worth
+flagging even before performance drops.
+
+**5.2 Delayed-label performance tracking** — once outcomes mature, compare
+logged predictions against what actually happened. This is real model decay,
+measured, not claimed.
+
+**5.3 Champion/challenger retraining** — a retrained model must beat the
+incumbent on a holdout before promotion. Auto-promote or require approval.
+
+**5.4 Holdout control group** — the most valuable feature in this document.
+Automatically hold back a random slice of flagged customers as *untreated*, then
+compare their churn rate against the treated group. This turns SHAP-derived
+recommendations from hypotheses into measured money, and it is the honest answer
+to the causality problem below. Very few tools ship this.
 
 **Definition of Done**
-- [ ] Global summary plot saved for the report
-- [ ] Local explanation works for any single customer
-- [ ] Readable label mapping written
-- [ ] Sanity check: high-risk customers should surface month-to-month contract,
-      fiber optic, electronic check, low tenure. If they don't, something is wrong.
+- [ ] Drift visible per feature over time
+- [ ] A retrain triggered by measured decay, not a calendar
+- [ ] Holdout results reported as an actual retention lift number
 
 ---
 
-## Phase A6 — Retention recommendation logic
+## Stage 6 — Open source properly
 
-**Entry:** A5 done.
+**Owner:** Dhruv.
 
-**Tasks**
-1. Write rules mapping risk drivers → offers. Start simple:
-   - Month-to-month → discounted annual contract
-   - No tech support + has internet → free support trial
-   - High monthly charges → plan right-sizing
-   - Electronic check → autopay incentive
-2. Hand the rules to Dhruv; they drop into `recommend()` in
-   `src/api/predict.py` without touching endpoint code.
-
-**Definition of Done**
-- [ ] Rules cover every high-risk driver from A5
-- [ ] Each rule has a stated rationale
-- [ ] **Causality caveat written for the report** (see below)
-
-**Non-negotiable caveat:** SHAP explains what the *model* used, not what *causes*
-churn. "High charges drove this prediction" ≠ "a discount will retain them."
-Recommendations are hypotheses requiring an A/B test to validate. Write this
-sentence in the report. Claiming causal effect from SHAP is the mistake an
-evaluator will catch, and pre-empting it turns a weakness into a strength.
+1. One-command self-host: `docker compose up` brings up API, worker, MLflow,
+   Postgres, object storage, and UI from empty state.
+2. **Data never leaves the company's infrastructure.** Churn data is PII-heavy;
+   this is a genuine adoption advantage and it should be stated plainly.
+3. Identifiers hashed or dropped by default.
+4. LICENSE, CONTRIBUTING, an architecture diagram, and a sample dataset that is
+   not Telco.
+5. Honest README — see the caveats section there.
 
 ---
 
-# TRACK B — MLOps (Dhruv)
+## Honest caveats — keep these in the README, do not quietly drop them
 
-## Phase B1 — Repository and CI
-
-**Entry:** Immediate. Nothing blocks this.
-
-**Tasks**
-1. Push the scaffold to GitHub. Branches: `main` (protected), `develop`, feature
-   branches off `develop`.
-2. Enable the CI workflow (`.github/workflows/ci.yml`). Require it to pass before
-   merge to `main`.
-3. Add both collaborators. Sanjida commits notebooks to `notebooks/`.
-4. Confirm `make test` is green — it passes with no model present by design.
-
-**Definition of Done**
-- [ ] Repo live, both members have access
-- [ ] CI green on `develop`
-- [ ] `main` protected, requires passing CI
-- [ ] README's contract section read by both people
+- **SHAP explains the model, not the world.** "High monthly charges drove this
+  prediction" is not "a discount will retain this customer." Recommendations are
+  hypotheses. Stage 5.4 is how they stop being hypotheses.
+- **A high churn score does not mean a customer is worth spending on.** Some
+  will leave regardless; spending on them is wasted. Proper uplift modelling is
+  the long-term answer, and until then the platform should not pretend otherwise.
+- **Auto-training on unknown data is dangerous without Stage 2.** A confident
+  model built on leaked columns is worse than no model, because someone will act
+  on it.
+- **Automatic column mapping will sometimes be wrong.** Always show the user
+  what was inferred and let them correct it before training.
 
 ---
 
-## Phase B2 — MLflow tracking
+## Build order
 
-**Entry:** B1 done.
-
-**Tasks**
-1. Run the MLflow server (`docker compose up mlflow`, or `make mlflow` for a
-   local file store).
-2. Run `python -m src.train --model logistic` end to end even with a weak model —
-   the point is proving the round trip works, not the score.
-3. Confirm params, metrics, and the model artifact all appear in the UI.
-4. Show Sanjida the UI so her tuning runs get logged and become comparable.
-
-**Definition of Done**
-- [ ] MLflow reachable, experiments visible
-- [ ] At least one run logged with a model artifact
-- [ ] Sanjida can log runs from her notebook
-
----
-
-## 🚦 INTEGRATION GATE 1 — Round trip proven
-
-**Both people. Do this as early as possible, with whatever model exists.**
-
-The purpose is to prove the plumbing works. A bad model proves it as well as a
-good one, so do **not** wait for the final tuned model.
-
-1. Sanjida logs any pipeline to MLflow
-2. Register it and promote to `Production` stage
-3. Dhruv starts the API, calls `POST /predict` with the example payload
-4. A probability comes back
-
-**Gate passed when:** a raw JSON customer produces a churn probability.
-
-If this is left until week 4, integration bugs surface at the worst possible
-time. Do it in week 1.
-
----
-
-## Phase B3 — FastAPI service
-
-**Entry:** Gate 1 passed.
-
-**Tasks**
-1. Verify all four endpoints: `/health`, `/predict`, `/predict/batch`, `/reload`.
-2. Set `DECISION_THRESHOLD` to the value from A3.
-3. Test rejection cases — invalid category, negative tenure — return 422.
-4. Confirm `/health` returns `degraded` rather than crashing when no model loads.
-
-**Definition of Done**
-- [ ] `/docs` renders interactive Swagger UI
-- [ ] Batch endpoint handles 100+ customers
-- [ ] `/reload` picks up a newly promoted model without restart
-- [ ] Tests pass
-
----
-
-## Phase B4 — Wire in SHAP and retention
-
-**Entry:** B3 done, A5 and A6 delivered.
-
-**Tasks**
-1. Confirm `/predict?explain=true` returns top reasons.
-2. Replace the placeholder rules in `recommend()` with Sanjida's actual rules.
-3. Apply the readable-label mapping from A5 to SHAP feature names.
-4. Measure latency with explanations on. If slow, keep `explain=false` as the
-   batch default (already the case).
-
-**Definition of Done**
-- [ ] Single prediction returns probability + band + reasons + recommendation
-- [ ] Feature names are human-readable
-- [ ] Single prediction under ~500ms
-
----
-
-## Phase B5 — Docker
-
-**Entry:** B4 done.
-
-**Tasks**
-1. `make docker` — build succeeds.
-2. Run the container, hit `/health` from outside.
-3. `docker compose up` — API and MLflow talk to each other.
-4. Confirm the CI docker job passes.
-
-**Definition of Done**
-- [ ] Image builds clean
-- [ ] Container healthcheck passes
-- [ ] Compose stack works end to end
-- [ ] Image size noted for the report
-
----
-
-## Phase B6 — Streamlit portal
-
-**Entry:** B5 done. **Both people — Sanjida owns content, Dhruv owns wiring.**
-
-**Tasks**
-1. `app/streamlit_app.py` calling the API over HTTP — never importing the model
-   directly. The UI must not have its own copy of the model; that defeats the
-   whole architecture.
-2. Two modes: single-customer form, and CSV upload for batch.
-3. Display: probability gauge, risk band, top reasons, recommendation.
-4. Add a `Dockerfile.streamlit` and uncomment the `ui` service in
-   `docker-compose.yml`.
-
-**Definition of Done**
-- [ ] Single prediction works from the browser
-- [ ] CSV upload returns a scored table
-- [ ] UI reads `API_URL` from environment, no hardcoded localhost
-- [ ] Whole stack runs with one `docker compose up`
-
----
-
-## 🚦 INTEGRATION GATE 2 — Full stack local
-
-**Both people.** One command brings up MLflow + API + Streamlit. A customer
-entered in the browser returns probability, reasons, and a recommendation.
-
-**Take a screen recording here.** This is the demo. Do not rely on live demos
-working on presentation day.
-
----
-
-## Phase B7 — Deployment
-
-**Entry:** Gate 2 passed.
-
-**Tasks**
-1. Deploy the API container to Render (free tier takes the Dockerfile directly).
-2. Set env vars: `MLFLOW_TRACKING_URI`, `MODEL_NAME`, `MODEL_STAGE`,
-   `DECISION_THRESHOLD`.
-3. Deploy Streamlit to Streamlit Community Cloud, pointed at the API URL.
-4. **Tighten CORS** — replace `allow_origins=["*"]` with the Streamlit domain.
-5. Expect a cold-start delay on free tiers; mention it rather than being
-   surprised by it in the demo.
-
-**Definition of Done**
-- [ ] Public API URL responding to `/health`
-- [ ] Public Streamlit URL producing predictions
-- [ ] CORS restricted
-- [ ] Both URLs in the README
-
----
-
-## Phase B8 — Monitoring (scope this honestly)
-
-**Entry:** B7 done.
-
-The roadmap image says "monitor model performance." On 7043 static rows there is
-no genuine drift to detect. Pick one of two honest options:
-
-**Option 1 — Service monitoring (simpler, fully truthful)**
-- Request count, latency percentiles, error rate
-- Prediction distribution over time — if the mean predicted probability shifts,
-  the input population has changed
-- `/health` polled by an uptime checker
-
-**Option 2 — Simulated drift (more impressive, more work)**
-- Slice the dataset into pseudo-monthly batches by `tenure`
-- Score each batch, track PR-AUC across batches
-- Introduce deliberate drift in one batch, detect it, retrain, promote a new
-  version in the registry, call `/reload`
-- Demonstrate the full degrade → retrain → promote → serve cycle
-
-**Definition of Done**
-- [ ] One option implemented fully
-- [ ] Report states plainly which one and why the other was out of scope
-
-**Do not claim production drift monitoring you are not doing.** Overclaiming is
-what turns a good project into a challenged one.
-
----
-
-## 🚦 INTEGRATION GATE 3 — Submission ready
-
-- [ ] Public URLs live
-- [ ] README complete with architecture diagram
-- [ ] Report written, both sections merged
-- [ ] Demo recording saved
-- [ ] Repo clean — no notebooks with 200 output cells, no committed CSV, no keys
-- [ ] Both members can explain the *other* person's half
-
-That last box matters. If only one person can explain the deployment, the
-project reads as one person's work.
-
----
-
-## Suggested sequencing
-
-| Week | Sanjida | Dhruv | Milestone |
-| --- | --- | --- | --- |
-| 1 | A1, A2 | B1, B2 | **Gate 1** — round trip |
-| 2 | A3, A4 | B3 | Threshold fixed, API live |
-| 3 | A5, A6 | B4, B5 | Explanations + container |
-| 4 | UI content | B6, B7 | **Gate 2** — full stack |
-| 5 | Report | B8, docs | **Gate 3** — submission |
-
-Compress if the deadline is tighter, but never move Gate 1 later. Everything
-else can be rushed; unproven integration cannot.
-
----
-
-## Risk register
-
-| Risk | Likelihood | Mitigation |
+| Order | Stage | Why here |
 | --- | --- | --- |
-| Bare booster saved instead of Pipeline | High | Contract agreed now; Gate 1 catches it |
-| Threshold mismatch between notebook and API | High | Single value in `DECISION_THRESHOLD`, set in A3 |
-| Train/serve encoding skew | Medium | Pinned categories in `schema.py` |
-| Streamlit loads model directly, bypassing API | Medium | Code review at B6 |
-| Free-tier cold start ruins live demo | Medium | Pre-recorded demo |
-| SHAP too slow on batch | Low | `explain=false` default already set |
-| Integration left to final week | High | Gate 1 in week 1 |
+| 1 | Stage 1 — schema as data | Nothing else is possible first |
+| 2 | Stage 2 — trustworthy | Wrong models are worse than none |
+| 3 | Stage 3 — actionable | Turns scores into a product |
+| 4 | Stage 4 — platform | Multi-tenant, jobs, isolation |
+| 5 | Stage 5 — monitoring | Needs logged predictions from Stage 4 |
+| 6 | Stage 6 — open source | Package once the thing works |
 
----
-
-## Report and viva talking points
-
-Prepare answers to these. They are the questions that actually get asked.
-
-1. **"Why not accuracy?"** — 26.5% positive class; predict-all-negative scores
-   73.5%. PR-AUC and expected value instead.
-2. **"Why 0.5 threshold?"** — It isn't. Cost-based selection on out-of-fold
-   predictions, with stated cost assumptions. *This is your strongest answer.*
-3. **"Does SHAP prove causation?"** — No. Correlational attribution of model
-   behaviour. Recommendations are hypotheses needing an A/B test.
-4. **"Why XGBoost over logistic regression?"** — Show the comparison table from
-   A2. If the gain is small, say so; defensible honesty beats an inflated claim.
-5. **"What's actually MLOps here?"** — Experiment tracking, model registry with
-   stage promotion, containerised serving, CI on every push, hot model reload
-   without redeploy.
-6. **"How would this work at real scale?"** — Feature store for consistency,
-   scheduled retraining on fresh data, uplift modelling to replace rule-based
-   retention, monitoring on genuine incoming traffic.
-7. **"What would you do differently?"** — Uplift modelling instead of
-   classification-plus-rules; a dataset with real timestamps enabling true
-   temporal validation.
+Stages 2 and 3 can overlap. Stage 5 cannot start before 4.4 is logging.
 
 ---
 
@@ -494,18 +331,15 @@ feat/...  features off develop
 Commit messages: a plain sentence saying what the change does, capitalised, with
 no `type:` prefix. Add body paragraphs when the reasoning is worth recording.
 
-Do not commit: the CSV, `mlruns/`, `.env`, model binaries. All already in
-`.gitignore`.
+Do not commit: customer CSVs, `mlruns/`, `.env`, model binaries.
 
 ---
 
-## Weekly sync template
+## Weekly sync
 
-Fifteen minutes, once a week, both people:
-
-1. What phase am I on, and is its Definition of Done met?
+1. What stage am I on, and is its Definition of Done met?
 2. Anything blocking the other person?
-3. Has anything changed in `schema.py`, the threshold, or the contract?
-4. Is the next gate still on track?
+3. Has the schema artifact format, the threshold logic, or the model-version
+   contract changed?
 
 Question 3 is the one that prevents the expensive bugs.
