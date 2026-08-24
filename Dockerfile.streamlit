@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -10,14 +10,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# UI dependencies only. The model stack is deliberately absent: this container
-# must not be able to load a model even by accident.
-COPY requirements-ui.txt .
-RUN pip install --no-cache-dir -r requirements-ui.txt
+# The `ui` extra installs churnkit's core (pandas, numpy, pydantic) plus
+# Streamlit — and deliberately NOT scikit-learn, xgboost, shap or mlflow. The
+# portal therefore cannot load a model even by accident; API_URL is its only
+# route to a prediction. The reference schema and label modules it imports for
+# the form and the readable SHAP names are pure Python and need none of that.
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+RUN pip install --no-cache-dir ".[ui]"
 
-# schema.py and labels.py are imported for the form options and the readable
-# SHAP names, keeping the feature contract in one place.
-COPY src/__init__.py src/schema.py src/labels.py ./src/
 COPY app/ ./app/
 
 RUN useradd --create-home appuser && chown -R appuser:appuser /app

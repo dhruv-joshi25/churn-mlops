@@ -1,7 +1,21 @@
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+_PACKAGE_DIR = Path(__file__).resolve().parent
+
+# Where relative defaults (mlruns/, models/, data/) hang off.
+#
+# In a source checkout the package sits at <repo>/src/churnkit, so the repo root
+# is two levels up and the defaults point at the developer's own directories no
+# matter which directory they run from. Once churnkit is installed as a package
+# that reasoning stops holding — site-packages has no data/ — so the working
+# directory takes over, which is what the containers rely on: they install the
+# package and run from /app, where models/ and data/ are mounted.
+ROOT = (
+    _PACKAGE_DIR.parents[1]
+    if _PACKAGE_DIR.parent.name == "src"
+    else Path.cwd()
+)
 
 # Load .env for local development. Optional by design: Docker and CI inject
 # environment variables directly, so the app must work without this file.
@@ -22,7 +36,10 @@ MODEL_STAGE = os.getenv("MODEL_STAGE", "Production")
 # Fallback for local dev / CI when no registry is reachable.
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH", str(ROOT / "models" / "model"))
 
-DATA_PATH = os.getenv("DATA_PATH", str(ROOT / "data" / "telco_churn.csv"))
+# Platform code names no dataset (I11), so the default is a generic filename and
+# the real path comes from the environment. .env.example carries the path the
+# reference implementation trains on.
+DATA_PATH = os.getenv("DATA_PATH", str(ROOT / "data" / "customers.csv"))
 
 # Decision threshold.
 #

@@ -3,7 +3,11 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from src.schema import CATEGORICAL_FEATURES, CATEGORY_VALUES, NUMERIC_FEATURES
+from churnkit.reference.schema import (
+    CATEGORICAL_FEATURES,
+    CATEGORY_VALUES,
+    NUMERIC_FEATURES,
+)
 
 
 def build_preprocessor() -> ColumnTransformer:

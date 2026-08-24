@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import predict as engine
-from src.api.models import (
+from churnkit.reference.api import predict as engine
+from churnkit.reference.api.models import (
     BatchRequest,
     BatchResponse,
     Customer,

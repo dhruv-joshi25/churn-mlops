@@ -1,8 +1,9 @@
 # Churn Platform — Build Roadmap
 
 **Team:** Sanjida (ML, SHAP, retention logic) · Dhruv (platform, API, MLOps)
-**Status as of 20 Aug 2026:** Telco reference implementation working end to end.
-Platform pivot starting.
+**Status as of 24 Aug 2026:** Telco reference implementation working end to end,
+now quarantined under `churnkit/reference/`. Platform work has started: the
+nasty-CSV fixture corpus (S2) and the parser (S3) are in.
 
 ---
 
@@ -37,10 +38,10 @@ against. But it hardcodes one schema.
 
 | Built and verified | Where |
 | --- | --- |
-| Training with MLflow tracking + model registry | `src/train.py` |
-| Cost-based threshold, logged with the model | `src/train.py`, `src/api/predict.py` |
-| FastAPI service — predict, batch, health, reload | `src/api/` |
-| SHAP reasons with readable labels | `src/api/predict.py`, `src/labels.py` |
+| Training with MLflow tracking + model registry | `churnkit/reference/train.py` |
+| Cost-based threshold, logged with the model | `churnkit/reference/train.py`, `churnkit/reference/api/predict.py` |
+| FastAPI service — predict, batch, health, reload | `churnkit/reference/api/` |
+| SHAP reasons with readable labels | `churnkit/reference/api/predict.py`, `churnkit/reference/labels.py` |
 | Streamlit portal, talks to the API over HTTP only | `app/streamlit_app.py` |
 | Docker, compose, CI, tests | root, `.github/workflows/` |
 
@@ -55,13 +56,13 @@ Stage 4 when training becomes a service rather than a local script.
 
 ## The one change everything depends on
 
-Right now the feature contract lives in **source code**. `src/schema.py` lists
+Right now the feature contract lives in **source code**. `churnkit/reference/schema.py` lists
 Telco's 19 columns and pins every allowed category value, and the rest of the
 system reads it at import time:
 
-- `src/preprocess.py:28` — OneHotEncoder categories come from `CATEGORY_VALUES`
-- `src/data.py:33` — the target is literally compared against `"Yes"`
-- `src/api/models.py` — every request field is a `Literal[...]` fixed at import
+- `churnkit/reference/preprocess.py` — OneHotEncoder categories come from `CATEGORY_VALUES`
+- `churnkit/reference/data.py` — the target is literally compared against `"Yes"`
+- `churnkit/reference/api/models.py` — every request field is a `Literal[...]` fixed at import
 - `app/streamlit_app.py` — form dropdowns are rendered from the same lists
 
 Pinning the schema was the *right* decision for one dataset: it is what stops
@@ -90,7 +91,8 @@ invariant this whole platform rests on.
 **Owner:** Dhruv. **Blocks everything else.**
 
 **Tasks**
-1. Write `src/profiler.py` — reads a DataFrame, returns a schema object: per
+1. Write `src/churnkit/ingest/infer.py` (S4 in `BUILD_PROMPTS.md`) — reads a
+   parsed frame, returns a schema proposal: per
    column, its role (target / id / date / numeric / categorical / drop), dtype,
    observed categories, missing rate, cardinality.
 2. Serialise that schema to JSON and log it as an MLflow artifact on the run.
@@ -101,7 +103,10 @@ invariant this whole platform rests on.
 5. Build the pydantic request model at runtime from the loaded schema
    (`pydantic.create_model`) instead of declaring it statically.
 6. Render the Streamlit form from the loaded schema.
-7. Keep `schema.py` as a Telco *fixture* used by tests, not as the live contract.
+7. Keep `schema.py` as a Telco *fixture* used by tests, not as the live
+   contract. It lives in `churnkit/reference/`, which the I11 guard test fences
+   off from every platform module — see
+   [ADR 0003](docs/decisions/0003-churnkit-package-layout.md).
 
 **Definition of Done**
 - [ ] A CSV with entirely different column names trains without code changes

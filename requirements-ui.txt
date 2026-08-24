@@ -1,5 +1,0 @@
-# Streamlit portal only. Kept separate from requirements.txt so the API image
-# does not carry the UI stack, and vice versa.
-streamlit==1.41.1
-requests==2.34.2
-pandas==2.2.3

@@ -2,8 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.schema import CATEGORY_VALUES as C
-
 
 class Customer(BaseModel):
     tenure: int = Field(ge=0, le=100, description="Months with the company")

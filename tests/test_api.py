@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from src.api.main import app
-from src.schema import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
+from churnkit.reference.api.main import app
+from churnkit.reference.schema import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
 
 client = TestClient(app)
 

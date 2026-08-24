@@ -1,6 +1,6 @@
 """Training entrypoint with MLflow tracking.
 
-Run:  python -m src.train --model xgboost
+Run:  python -m churnkit.reference.train --model xgboost
 The point of this file is that every run is logged identically, so runs are
 comparable in the MLflow UI. Sanjida's notebook experiments can call
 train_and_log() directly.
@@ -23,9 +23,9 @@ from sklearn.metrics import (
 from sklearn.model_selection import StratifiedKFold, cross_val_predict, train_test_split
 from sklearn.pipeline import Pipeline
 
-from src import config
-from src.data import clean, load_raw, split_xy
-from src.preprocess import build_preprocessor
+from churnkit import config
+from churnkit.reference.data import clean, load_raw, split_xy
+from churnkit.reference.preprocess import build_preprocessor
 
 # Business costs used to pick the decision threshold. Change these with the
 # team; they matter more than any hyperparameter.
@@ -111,7 +111,9 @@ def train_and_log(model_name: str = "xgboost", register: bool = False):
 
         # Threshold is chosen on out-of-fold train predictions, never on test.
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        oof = cross_val_predict(pipe, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
+        oof = cross_val_predict(
+            pipe, X_train, y_train, cv=cv, method="predict_proba"
+        )[:, 1]
         threshold, expected_value = pick_threshold(y_train.to_numpy(), oof)
 
         pipe.fit(X_train, y_train)

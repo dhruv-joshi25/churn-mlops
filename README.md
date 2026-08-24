@@ -63,16 +63,19 @@ guarantees train/serve skew.
 ## Quickstart
 
 ```bash
-make install
-# place a churn CSV at data/telco_churn.csv
+make install      # installs churnkit + the serving stack, editable
+# put a churn CSV where DATA_PATH points (see .env.example)
 make train        # trains, logs to MLflow, registers the model
 make mlflow       # UI at :5000 to compare runs
 make api          # API docs at :8000/docs
-make install-ui   # Streamlit deps, kept out of the API image
+make install-ui   # UI deps only — no model libraries in that environment
 make ui           # portal at :8501 (needs the API running)
 make test
 make up           # mlflow + api + ui together via compose
 ```
+
+Contributors also want `make install-dev` (adds pytest, ruff, mypy), then
+`make lint`, `make typecheck` and `make coverage` — the same commands CI runs.
 
 Fastest way to see it work: `make api`, then open **http://localhost:8000/docs**,
 expand `POST /predict`, click **Try it out** → **Execute**.
@@ -151,22 +154,34 @@ and `/reload` design exists to prevent.
 ## Layout
 
 ```
-src/
-  schema.py       feature contract (Telco today; becoming a learned artifact)
-  labels.py       readable names for encoded SHAP feature columns
-  config.py       env-driven settings
-  data.py         cleaning applied identically at train and serve time
-  preprocess.py   ColumnTransformer built from the schema
-  train.py        MLflow-tracked training + cost-based threshold selection
-  api/
-    models.py     pydantic request/response validation
-    predict.py    model loading, inference, SHAP, retention hook
-    main.py       FastAPI app
+src/churnkit/
+  config.py         env-driven settings
+  ingest/
+    reader.py       parsing: encoding, delimiter, header row, dates, numerics,
+                    per-column parse statistics — no silent coercion anywhere
+  reference/        the Telco reference implementation, quarantined
+    schema.py       feature contract (Telco's; the platform learns its own)
+    labels.py       readable names for encoded SHAP feature columns
+    data.py         cleaning applied identically at train and serve time
+    preprocess.py   ColumnTransformer built from the schema
+    train.py        MLflow-tracked training + cost-based threshold selection
+    api/
+      models.py     pydantic request/response validation
+      predict.py    model loading, inference, SHAP, retention hook
+      main.py       FastAPI app
 app/
   streamlit_app.py  portal; talks to the API over HTTP, never loads a model
-tests/            run green with no model present
+tests/
+  fixtures/nasty/   15 adversarial CSVs + MANIFEST.md — the parser's spec
 .github/workflows/ci.yml
 ```
+
+Everything outside `reference/` is platform code and may not name a column from
+any particular dataset. `tests/test_layout_guards.py` fails the build if a Telco
+identifier appears anywhere else under `src/churnkit/`, so the quarantine cannot
+leak by accident. It shrinks as each platform module replaces its reference
+counterpart — see
+[ADR 0003](docs/decisions/0003-churnkit-package-layout.md).
 
 ---
 

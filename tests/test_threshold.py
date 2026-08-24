@@ -9,8 +9,8 @@ probability, just thresholded at the wrong place.
 
 import pytest
 
-from src import config
-from src.api import predict as engine
+from churnkit import config
+from churnkit.reference.api import predict as engine
 
 
 @pytest.fixture(autouse=True)

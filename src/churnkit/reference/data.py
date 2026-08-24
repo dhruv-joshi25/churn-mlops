@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.schema import CATEGORICAL_FEATURES, FEATURES, ID_COL, TARGET
+from churnkit.reference.schema import CATEGORICAL_FEATURES, FEATURES, ID_COL, TARGET
 
 
 def load_raw(path: str) -> pd.DataFrame:

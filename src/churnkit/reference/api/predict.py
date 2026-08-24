@@ -13,8 +13,8 @@ import threading
 
 import pandas as pd
 
-from src import config
-from src.schema import FEATURES
+from churnkit import config
+from churnkit.reference.schema import FEATURES
 
 log = logging.getLogger(__name__)
 
@@ -173,7 +173,9 @@ def explain(df: pd.DataFrame, top_k: int = 4) -> list[list[dict]]:
         out = []
         for row in values:
             ranked = sorted(
-                zip(names, row), key=lambda kv: abs(kv[1]), reverse=True
+                zip(names, row, strict=True),
+                key=lambda kv: abs(kv[1]),
+                reverse=True,
             )[:top_k]
             out.append(
                 [
@@ -227,7 +229,7 @@ def predict(payloads: list[dict], with_reasons: bool = True) -> list[dict]:
 
     cutoff = threshold()
     results = []
-    for payload, p, r in zip(payloads, probs, reasons):
+    for payload, p, r in zip(payloads, probs, reasons, strict=True):
         p = float(p)
         results.append(
             {

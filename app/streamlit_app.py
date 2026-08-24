@@ -13,8 +13,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from src.labels import readable
-from src.schema import CATEGORY_VALUES, FEATURES
+from churnkit.reference.labels import readable
+from churnkit.reference.schema import CATEGORY_VALUES, FEATURES
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
 TIMEOUT = 30
