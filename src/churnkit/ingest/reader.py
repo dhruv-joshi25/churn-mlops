@@ -38,7 +38,14 @@ from pathlib import Path
 
 import pandas as pd
 
-__all__ = ["ColumnStats", "ParseResult", "RowFailure", "read_table"]
+__all__ = [
+    "MAX_FILE_BYTES",
+    "ColumnStats",
+    "FileTooLargeError",
+    "ParseResult",
+    "RowFailure",
+    "read_table",
+]
 
 # ── Detection tables ──────────────────────────────────────────────────────────
 
@@ -92,6 +99,30 @@ EXCEL_SERIAL_RANGE: tuple[int, int] = (20_000, 60_000)
 PARSE_ACCEPTANCE = 0.8
 
 MAX_SAMPLE_FAILURES = 5
+
+# Largest file this module will open, in bytes.
+#
+# The parser is not streaming: it holds the raw bytes, the decoded text, the
+# split lines and the parsed records at once, so peak memory runs to several
+# times the file size. Without a limit a single large upload takes the machine
+# down, and on a self-hosted box that is the operator's own machine.
+#
+# 256 MiB comfortably admits the 200 MB that Streamlit's uploader accepts by
+# default, which is the largest file that can reach this code through the UI.
+# Raising it means paying for it in RAM until the parser reads incrementally.
+MAX_FILE_BYTES = 256 * 1024 * 1024
+
+
+# ── Failures ──────────────────────────────────────────────────────────────────
+
+
+class FileTooLargeError(ValueError):
+    """A file exceeded :data:`MAX_FILE_BYTES` and was refused unread.
+
+    Subclasses ``ValueError`` because that is what the rest of this module
+    raises for a file it cannot work with, so a caller that already handles
+    unreadable files keeps working without knowing this type exists.
+    """
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -853,12 +884,18 @@ def _split_rows(
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
+def _mib(n_bytes: int) -> str:
+    """Byte counts past a few million stop being readable; the report shows both."""
+    return f"{n_bytes / (1024 * 1024):.1f} MiB"
+
+
 def read_table(
     path: str | Path,
     *,
     encoding: str | None = None,
     delimiter: str | None = None,
     dayfirst: bool | None = None,
+    max_bytes: int = MAX_FILE_BYTES,
 ) -> ParseResult:
     """Read a delimited file and report everything that had to be decided.
 
@@ -872,10 +909,24 @@ def read_table(
     a column the parser has refused to guess at, and evidence inside a column
     still wins over it, so a column that proves itself day-first is not reordered
     by an operator's blanket answer.
+
+    ``max_bytes`` is refused on the file's size alone, before a byte is read, so
+    an oversized file costs a ``stat`` rather than the memory it would occupy.
     """
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"cannot read {path}: no such file")
+
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise FileTooLargeError(
+            f"cannot read {path}: the file is {size} bytes "
+            f"({_mib(size)}), over the limit of {max_bytes} bytes "
+            f"({_mib(max_bytes)}). The parser decodes a file whole and holds "
+            "several copies of it while doing so, so this limit is what stops "
+            "one upload exhausting the machine. Raise it with "
+            "read_table(..., max_bytes=...) where there is memory to spare."
+        )
 
     raw_bytes = path.read_bytes()
     detected_encoding = encoding or _detect_encoding(raw_bytes)

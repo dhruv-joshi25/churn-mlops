@@ -66,3 +66,28 @@ DECISION_THRESHOLD = (
     if DECISION_THRESHOLD_OVERRIDE is not None
     else FALLBACK_THRESHOLD
 )
+
+# ── Browser-facing hardening ──────────────────────────────────────────────────
+#
+# None of this is user authentication, and none of it is meant to become that
+# (ADR 0001: one operator, one deployment, no accounts). It is a same-origin
+# boundary, which is a different thing: it stops a page the operator happens to
+# have open in another tab from driving their API on their behalf.
+
+# Origins allowed to call the API from a browser. The portal is not in this list
+# because it needs to be — Streamlit calls the API server-side, so no browser
+# request crosses an origin — but because an operator writing their own page
+# against a local deployment expects it to work. See ADR 0004.
+_raw_origins = os.getenv("CORS_ORIGINS", "").strip()
+CORS_ORIGINS = (
+    [origin.strip() for origin in _raw_origins.split(",") if origin.strip()]
+    if _raw_origins
+    else ["http://localhost:8501", "http://127.0.0.1:8501"]
+)
+
+# Header every state-changing request must carry. The value is irrelevant and is
+# not a secret: what matters is that it is a *custom* header, because a browser
+# will not send one cross-origin without a preflight, and CORS_ORIGINS is what
+# refuses that preflight. The two together are the CSRF defence; neither half
+# works alone.
+ADMIN_HEADER = "X-Churnkit-Admin"

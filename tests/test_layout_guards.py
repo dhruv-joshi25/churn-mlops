@@ -154,3 +154,21 @@ def test_modules_the_ui_imports_stay_free_of_model_libraries(module):
     assert not found, (
         f"{module} imports {found}, which the UI environment does not install"
     )
+
+
+# ── The portal and the API have to agree on the /reload header ────────────────
+#
+# The portal may not import churnkit.config (the guard above, and the `ui` extra
+# it is installed from), so the header name is written out literally in the app.
+# That duplication is the price of the import boundary; this test is what stops
+# it drifting into a reload button that silently 403s.
+
+
+def test_the_portal_sends_the_header_the_api_demands():
+    from churnkit.config import ADMIN_HEADER
+
+    source = (APP / "streamlit_app.py").read_text(encoding="utf-8")
+    assert f'"{ADMIN_HEADER}"' in source, (
+        f"the portal must send {ADMIN_HEADER} on /reload; the API refuses the "
+        "request without it and the reload button would fail with a 403"
+    )

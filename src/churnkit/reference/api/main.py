@@ -1,9 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from churnkit import config
 from churnkit.reference.api import predict as engine
 from churnkit.reference.api.models import (
     BatchRequest,
@@ -29,11 +30,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# An allowlist rather than "*", so a browser will not let an arbitrary page
+# read this API's responses. It is also load-bearing for the /reload guard
+# below: that guard works by requiring a custom header, and a custom header
+# is only expensive to forge because the preflight it triggers lands here.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten before any public deployment
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.CORS_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", config.ADMIN_HEADER],
 )
 
 
@@ -50,8 +55,26 @@ def health():
 
 
 @app.post("/reload", tags=["ops"])
-def reload_model():
-    """Pull the current Production model without restarting the container."""
+def reload_model(
+    admin: str | None = Header(default=None, alias=config.ADMIN_HEADER),
+):
+    """Pull the current Production model without restarting the container.
+
+    The only endpoint here that changes server state, and therefore the only
+    one worth a cross-site request. The required header is not a credential —
+    anyone who can reach the port can send it — it is there because a browser
+    will not attach a custom header to a cross-origin request without first
+    passing the CORS preflight, which an unlisted origin fails. That closes
+    the drive-by case: a page the operator is merely visiting cannot swap the
+    model underneath them. See ADR 0004 for what this deliberately does not
+    defend against.
+    """
+    if admin is None:
+        raise HTTPException(
+            403,
+            f"/reload changes which model is served, so it requires the "
+            f"{config.ADMIN_HEADER} header. Send it with any value.",
+        )
     model = engine.load_model(force=True)
     if model is None:
         raise HTTPException(503, "no model available to load")

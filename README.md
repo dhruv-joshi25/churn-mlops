@@ -93,13 +93,25 @@ expand `POST /predict`, click **Try it out** → **Execute**.
 | `GET /health` | Liveness, model version, active threshold and where it came from |
 | `POST /predict` | One customer → probability, risk band, top SHAP reasons, retention hint |
 | `POST /predict/batch` | Up to 1000 customers; `explain=false` by default for speed |
-| `POST /reload` | Pull the current Production model without restarting the container |
+| `POST /reload` | Pull the current Production model without restarting the container. Requires the `X-Churnkit-Admin` header |
 
 `/health` returns `degraded` rather than a 500 when no model is loaded, so a
 missing model is visible instead of looking like a crash.
 
 `/reload` is what makes the registry meaningful — promote a new version in
 MLflow, call `/reload`, done. No rebuild, no downtime.
+
+It is the one endpoint that changes server state, so it requires a header:
+
+```bash
+curl -X POST -H "X-Churnkit-Admin: 1" http://localhost:8000/reload
+```
+
+The value is ignored and is not a secret. A browser will not attach a custom
+header cross-origin without a preflight, and the origin allowlist refuses
+that preflight, so the pair stops a page you happen to be visiting from
+swapping the served model underneath you. It is not authentication and does
+not pretend to be — see ADR 0004.
 
 Watch the `threshold_source` field in responses. If it ever reads `fallback`,
 something upstream failed to log a threshold and the cutoff is an arbitrary 0.5.
@@ -191,7 +203,17 @@ Render or Railway take the Dockerfile directly. Set `MLFLOW_TRACKING_URI`,
 `MODEL_NAME`, and `MODEL_STAGE`. Leave `DECISION_THRESHOLD` unset so the model's
 own threshold is used — set it only as a deliberate operator override.
 
-Tighten the CORS `allow_origins` list before exposing anything publicly.
+Browser access is an allowlist, not `*`: set `CORS_ORIGINS` if you point your
+own browser-side page at the API. The bundled portal does not need it, because
+it calls the API server-side.
+
+The parser refuses any file over 256 MiB (`MAX_FILE_BYTES`). It decodes a file
+whole and holds several copies while doing so, so an unbounded upload is an
+out-of-memory kill on the machine you are running it on.
+
+Neither of those is authentication. Nothing here authenticates anyone, by
+design (ADR 0001) — put a reverse proxy in front of the API before exposing it
+to a network you do not trust.
 
 Churn data is PII-heavy. The intended deployment story is self-hosted, with data
 never leaving your own infrastructure.

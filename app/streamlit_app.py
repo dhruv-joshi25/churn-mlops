@@ -20,6 +20,12 @@ API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
 TIMEOUT = 30
 BATCH_LIMIT = 1000  # matches BatchRequest's max_length
 
+# The API refuses /reload without this header (ADR 0004). Written out rather
+# than imported because the portal may not import churnkit.config — see the
+# import guard in tests/test_layout_guards.py, which also pins the two names
+# together so this copy cannot drift.
+ADMIN_HEADER = "X-Churnkit-Admin"
+
 st.set_page_config(page_title="Churn Prediction", page_icon="📉", layout="wide")
 
 
@@ -144,7 +150,14 @@ with st.sidebar:
 
     if st.button("Reload model", use_container_width=True):
         try:
-            r = requests.post(f"{API_URL}/reload", timeout=TIMEOUT)
+            # /reload is state-changing and the API refuses it without this
+            # header. Nothing secret — ADR 0004 explains why a custom header
+            # is what does the work.
+            r = requests.post(
+                f"{API_URL}/reload",
+                headers={ADMIN_HEADER: "1"},
+                timeout=TIMEOUT,
+            )
             r.raise_for_status()
             get_health.clear()
             st.success(f"Now serving {r.json()['model_version']}")

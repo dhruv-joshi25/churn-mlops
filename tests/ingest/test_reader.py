@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from churnkit.ingest import read_table
+from churnkit.ingest import MAX_FILE_BYTES, FileTooLargeError, read_table
 
 NASTY = Path(__file__).resolve().parents[1] / "fixtures" / "nasty"
 
@@ -489,3 +489,56 @@ def test_space_grouped_numbers_parse_whatever_kind_of_space_is_used(tmp_path):
 
     assert list(result.frame["montant"]) == pytest.approx([1234.56, 9870.10, 2500.00])
     assert result.columns["montant"].n_failed == 0
+
+
+# ── Size cap — a file cannot exhaust memory before it is even parsed ──────────
+
+
+def test_a_file_over_the_cap_is_refused_and_names_both_sizes(tmp_path):
+    """I10 in file form: say which file, how big it was, and what the cap is."""
+    path = tmp_path / "big.csv"
+    path.write_text("a,b\n" + "1,2\n" * 500, encoding="utf-8")
+
+    with pytest.raises(FileTooLargeError) as exc:
+        read_table(path, max_bytes=64)
+
+    message = str(exc.value)
+    assert "big.csv" in message
+    assert str(path.stat().st_size) in message
+    assert "64" in message
+
+
+def test_the_cap_is_checked_before_the_bytes_are_read(monkeypatch, tmp_path):
+    """Refusing after read_bytes() would have already paid the memory cost."""
+    path = tmp_path / "big.csv"
+    path.write_text("a,b\n" + "1,2\n" * 500, encoding="utf-8")
+
+    def explode(self):
+        raise AssertionError("read_bytes() was called on an oversized file")
+
+    monkeypatch.setattr(Path, "read_bytes", explode)
+
+    with pytest.raises(FileTooLargeError):
+        read_table(path, max_bytes=64)
+
+
+def test_a_file_exactly_at_the_cap_is_read(tmp_path):
+    """The cap is a maximum, not a strict bound — off-by-one here rejects data."""
+    path = tmp_path / "snug.csv"
+    path.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    result = read_table(path, max_bytes=path.stat().st_size)
+
+    assert result.n_rows_kept == 1
+
+
+def test_a_missing_file_is_still_reported_as_missing_not_as_oversized(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_table(tmp_path / "nope.csv", max_bytes=1)
+
+
+@pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: p.name)
+def test_the_default_cap_admits_the_whole_corpus(path):
+    """A cap that rejects ordinary files is a bug, not a safeguard."""
+    assert path.stat().st_size < MAX_FILE_BYTES
+    read_table(path)

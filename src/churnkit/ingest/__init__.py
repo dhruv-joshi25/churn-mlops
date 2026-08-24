@@ -5,10 +5,19 @@ dataset may appear here (I11).
 """
 
 from churnkit.ingest.reader import (
+    MAX_FILE_BYTES,
     ColumnStats,
+    FileTooLargeError,
     ParseResult,
     RowFailure,
     read_table,
 )
 
-__all__ = ["ColumnStats", "ParseResult", "RowFailure", "read_table"]
+__all__ = [
+    "MAX_FILE_BYTES",
+    "ColumnStats",
+    "FileTooLargeError",
+    "ParseResult",
+    "RowFailure",
+    "read_table",
+]
