@@ -71,6 +71,21 @@ tracking-server path-traversal CVEs. Here it is a local file store, so exposure
 is nil. The standing rule is simply never to bind that server to a public
 interface. A version bump is a separate change with its own test run.
 
+## The develop branch is gone
+
+It never diverged from `main`. Every push this session put both branches on the
+identical commit, and the history has no fork in it anywhere — `develop` was a
+second name for the trunk. CI was also changed to trigger on `main` and on pull
+requests only, which would have left `develop` as a branch you could push to and
+get no test run from. Both the branch and its mentions in `ROADMAP.md` are
+removed; `main` is the only long-lived branch now.
+
+The commit convention in `ROADMAP.md` was wrong in a way that had been quietly
+producing bad commits: it said to "add body paragraphs when the reasoning is
+worth recording", which is the opposite of what this project wants. It now says
+three to five words and no body, with the reasoning going here and into the
+ADRs.
+
 ## Pick up next
 
 Nothing is half-done. The parser's next step is unchanged from

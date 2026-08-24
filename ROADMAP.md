@@ -328,13 +328,21 @@ Stages 2 and 3 can overlap. Stage 5 cannot start before 4.4 is logging.
 ## Git conventions
 
 ```
-main      protected, always deployable
-develop   integration branch
-feat/...  features off develop
+main      the only long-lived branch; protected, always deployable
+feat/...  short-lived, branched off main, deleted after merge
 ```
 
-Commit messages: a plain sentence saying what the change does, capitalised, with
-no `type:` prefix. Add body paragraphs when the reasoning is worth recording.
+There is no `develop` branch. It was retired because it never diverged from
+`main` — every push put both on the same commit, so it was a second name for
+the trunk rather than an integration point. CI runs on pushes to `main` and on
+pull requests, so a branch outside that pair gets no test run at all, which is
+the other reason not to keep one sitting around unused.
+
+Commit messages: a short capitalised phrase saying what the change does, three
+to five words, no `type:` prefix, **and no body**. The reasoning belongs in the
+session note under `docs/sessions/` and in the ADR under `docs/decisions/`,
+which is where this project already keeps it — a commit body is a third copy
+that goes stale.
 
 Do not commit: customer CSVs, `mlruns/`, `.env`, model binaries.
 
