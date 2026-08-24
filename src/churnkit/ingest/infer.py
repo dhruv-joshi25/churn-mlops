@@ -361,6 +361,22 @@ def _tier(certain: bool, borderline: bool, min_class: int) -> str:
 
 
 def _looks_binary(values: pd.Series) -> bool:
+    """Two distinct values. Any two — not two from an English vocabulary.
+
+    An earlier version required {0,1}, {yes,no} or {true,false}, which meant a
+    German export using ja/nein had no detectable target at all. The operator's
+    language is not something this platform gets to have an opinion about.
+    """
+    return len(values[values.notna()].unique()) == 2
+
+
+def _recognised_boolean(values: pd.Series) -> bool:
+    """Whether the two values are a spelling of true/false this code knows.
+
+    Only ever used to *raise* confidence, never to qualify a column. A column
+    spelled in a language not listed here loses confidence; it never loses its
+    candidacy.
+    """
     distinct = values[values.notna()].unique()
     if len(distinct) != 2:
         return False
@@ -372,7 +388,7 @@ def _looks_binary(values: pd.Series) -> bool:
         except (TypeError, ValueError):
             numeric = set()
             break
-    return any(as_set == p or numeric == p for p in BINARY_TRUE_FALSE)
+    return any(as_set == pair or numeric == pair for pair in BINARY_TRUE_FALSE)
 
 
 def _role_for(
@@ -384,17 +400,6 @@ def _role_for(
         return CONSTANT, 0.99, (
             f"one value across all {n_rows} rows, so it carries no information"
         )
-
-    if _looks_binary(values) and (
-        kind == "numeric" or TARGET_NAME_PATTERN.search(name)
-    ):
-        hit = TARGET_NAME_PATTERN.search(name)
-        conf = 0.9 if hit else 0.55
-        why = "two values" + (
-            f" and the name matches {hit.group(0)!r}" if hit else ", but the name "
-            "suggests nothing about churn"
-        )
-        return TARGET_CANDIDATE, conf, why
 
     if kind == "datetime":
         return DATETIME, 0.95, "parsed as dates by the reader"
@@ -436,6 +441,12 @@ def _identifier_rank(
         return (0, position)
     if ID_NAME_WEAK.search(name):
         return (1, position)
+    if position == 0:
+        # "mitglied_nr", "numero_cliente", "顧客番号" — every id-name pattern is
+        # written in some language, and the operator's may not be it. A column
+        # that is unique on every row and sits first is an identifier in any
+        # language; it ranks last so a named candidate always wins.
+        return (2, position)
     return None
 
 
@@ -588,23 +599,52 @@ def infer_schema(
     # merely happens to be binary.
     candidates: list[TargetCandidate] = []
     for name, column_role in roles.items():
-        if column_role.role != TARGET_CANDIDATE:
+        if column_role.role in (IDENTIFIER, CONSTANT, FREE_TEXT, DATETIME):
             continue
-        rate = float(_positive_class_mask(frame[name]).mean())
+        values = frame[name]
+        if not _looks_binary(values):
+            continue
         hit = TARGET_NAME_PATTERN.search(name)
+        known = _recognised_boolean(values)
+        if hit and known:
+            confidence, why = 0.9, (
+                f"two values spelled like a yes/no, and the name matches "
+                f"{hit.group(0)!r}"
+            )
+        elif hit:
+            confidence, why = 0.7, (
+                f"the name matches {hit.group(0)!r}, though its two values are "
+                "not a spelling of yes/no this code recognises"
+            )
+        elif known:
+            confidence, why = 0.55, (
+                "two values spelled like a yes/no, but nothing in the name "
+                "refers to churn"
+            )
+        else:
+            confidence, why = 0.35, (
+                "the only column with exactly two values, but neither its name "
+                "nor its values say which one is the churn event — this is a "
+                "guess and needs checking"
+            )
         candidates.append(
             TargetCandidate(
                 name=name,
-                confidence=0.9 if hit else 0.5,
-                positive_rate=rate,
-                reasoning=(
-                    f"binary column whose name matches {hit.group(0)!r}"
-                    if hit
-                    else "binary column, but nothing in the name refers to churn"
-                ),
+                confidence=confidence,
+                positive_rate=float(_positive_class_mask(values).mean()),
+                reasoning=why,
             )
         )
     candidates.sort(key=lambda c: (-c.confidence, c.name))
+
+    # Only the leading candidate is labelled as such. A customer table routinely
+    # holds several yes/no columns and exactly one of them is the churn event;
+    # labelling all of them target candidates would bury the one that is.
+    if candidates:
+        winner = candidates[0]
+        roles[winner.name] = ColumnRole(
+            winner.name, TARGET_CANDIDATE, winner.confidence, winner.reasoning
+        )
 
     if target is not None:
         candidates.sort(key=lambda c: (c.name != target, -c.confidence))
@@ -612,6 +652,13 @@ def infer_schema(
     chosen = target or (candidates[0].name if candidates else None)
 
     warnings: list[str] = []
+    if candidates and candidates[0].confidence < 0.6 and target is None:
+        warnings.append(
+            f"the proposed target {candidates[0].name!r} was chosen with low "
+            f"confidence ({candidates[0].confidence:.2f}): {candidates[0].reasoning}. "
+            "Confirm it before anything is trained, and say which of its two "
+            "values means the customer left"
+        )
     if chosen is None:
         warnings.append(
             "no target column could be identified: no column is binary, so the "

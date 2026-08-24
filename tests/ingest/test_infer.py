@@ -304,3 +304,44 @@ def test_every_exclusion_carries_a_reason():
     p = propose("07_roles.csv")
     for column, reason in p.excluded.items():
         assert reason.strip(), f"{column} excluded without a reason"
+
+
+# ── 08 — a dataset with no English in it at all ───────────────────────────────
+#
+# The platform promise is that any company points this at their own data. A
+# German gym's export has no English column names, "ja"/"nein" instead of
+# yes/no, and "nr" instead of id. Nothing here may depend on the operator
+# happening to speak English (I11 in spirit: no dataset's conventions baked in).
+
+
+def test_08_a_non_english_target_is_still_proposed():
+    p = propose("08_non_english.csv")
+    assert p.target == "gekündigt"
+
+
+def test_08_a_non_english_identifier_is_still_proposed():
+    p = propose("08_non_english.csv")
+    assert p.id_column == "mitglied_nr"
+    assert p.roles["mitglied_nr"].role == "identifier"
+
+
+def test_08_a_guess_with_no_name_evidence_says_it_is_a_guess():
+    """Confidence has to fall when the only evidence is "it has two values"."""
+    p = propose("08_non_english.csv")
+    top = p.target_candidates[0]
+    assert top.name == "gekündigt"
+    assert top.confidence < 0.6
+    assert any("confidence" in w.lower() or "guess" in w.lower() for w in p.warnings)
+
+
+def test_08_the_rest_of_the_columns_still_get_sensible_roles():
+    p = propose("08_non_english.csv")
+    assert p.roles["standort"].role == "categorical_low"
+    assert p.roles["beitrag_eur"].role == "numeric"
+    assert p.roles["vertrag_beginn"].role == "datetime"
+
+
+def test_a_binary_column_that_is_not_the_target_keeps_its_own_role():
+    """Telco has seven binary columns; only one of them is the churn target."""
+    p = propose("06_clean_baseline.csv", target="left_service")
+    assert p.roles["district"].role == "categorical_low"

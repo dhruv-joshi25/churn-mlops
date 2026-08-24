@@ -124,3 +124,30 @@ null-mask correlation exceeds 0.9, no column is constant within a class.
 high-cardinality, or `row_uuid` a categorical merely because it is text. The
 distinction is uniqueness and name shape, and confidence should be lower where
 the two roles genuinely overlap.
+
+## 08_non_english.csv — a dataset with no English in it
+
+**Target:** `gekündigt`. A German gym's membership export: semicolon-delimited,
+a three-line preamble, German decimal commas (`59,90`), dotted day-first dates
+(`01.02.2023`), umlauts in the data and in a column name, `ja`/`nein` instead of
+yes/no, and `mitglied_nr` instead of any recognisable id name.
+
+**Planted: nothing.** This fixture holds no leak. It is here because the
+platform's promise is that *any* company points it at *their* data, and an
+earlier version of the inference layer found neither a target nor an identifier
+in this file — it recognised `{0,1}`, `{yes,no}` and `{true,false}` and nothing
+else, so a company that does not operate in English got a proposal with every
+important field blank.
+
+**Must catch:** `gekündigt` as the target and `mitglied_nr` as the identifier.
+The target is found because it is the only column with exactly two values, and
+the identifier because it is unique on every row and sits first — neither of
+which depends on the operator's language.
+
+**Must report honestly:** the target confidence must fall below 0.6 and a
+warning must say the choice was a guess. Getting the right answer for a weak
+reason is still a weak reason, and I7 gives the human the final say precisely so
+that low confidence can be surfaced rather than hidden.
+
+**Must not:** guess which of `ja`/`nein` means the customer left without saying
+so. The proposal names the column; the operator confirms the direction.
