@@ -1,0 +1,11 @@
+acct,addon_tier,support_calls,last_payment,churn_flag
+N1,None,3,120.00,0
+N2,Gold,NA,,1
+N3,None,0,N/A,0
+N4,Silver,null,88.50,1
+N5,None,-,220.00,0
+N6,Gold,7,NULL,1
+N7,Silver,?,--,0
+N8,None,2,45.25,1
+N9,Gold,,310.00,0
+N10,Silver,4,-,1

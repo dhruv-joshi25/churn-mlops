@@ -1,0 +1,6 @@
+subscriber,segment,last_note,revenue,lost
+S1,SMB,“price is too high”,880.00,yes
+S2,Mid–Market,“we’re happy”,4500.00,no
+S3,SMB,‘maybe next quarter’,320.00,yes
+S4,Enterprise,“renewing — no issues”,22100.00,no
+S5,Mid–Market,“waiting on legal”,6100.00,no

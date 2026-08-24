@@ -1,0 +1,6 @@
+  tenant_id ,	plan_code	,  months_billed,  is_gone  
+  T1 ,  BASIC  ,  14 ,  no 
+T2	,	PRO	,	3	,	yes
+ T3 ,   ,  27 ,  no 
+  T4,PRO ,  1,  yes  
+ T5 ,  BASIC,   ,  no 

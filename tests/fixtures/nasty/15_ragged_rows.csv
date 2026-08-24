@@ -1,0 +1,9 @@
+device_id,owner,warranty_months,returned
+DV1,alice,12,no
+DV2,bob,24
+DV3,carol,6,yes,extra-unexpected-value
+DV4,dan,36,no
+DV5
+DV6,erin,18,yes,,
+,,,
+DV7,frank,9,no

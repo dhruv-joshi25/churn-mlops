@@ -1,0 +1,6 @@
+id,amount,amount,region,region,status
+X1,100.00,250.00,north,north,active
+X2,60.50,310.75,south,south,churned
+X3,900.00,40.00,east,east,active
+X4,15.25,1200.00,north,north,churned
+X5,430.00,88.90,west,west,active

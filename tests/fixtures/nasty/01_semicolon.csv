@@ -1,0 +1,9 @@
+account_ref;plan_name;monthly_fee;left_us
+A-1001;Basic, monthly;19.99;no
+A-1002;Pro, annual, discounted;149.00;yes
+A-1003;Basic, monthly;19.99;no
+A-1004;Enterprise, custom, negotiated;980.50;yes
+A-1005;Pro, annual, discounted;149.00;no
+A-1006;Basic, monthly;19.99;yes
+A-1007;Enterprise, custom, negotiated;1240.00;no
+A-1008;Pro, annual, discounted;149.00;no

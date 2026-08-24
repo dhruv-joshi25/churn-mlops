@@ -1,0 +1,9 @@
+Quarterly churn export - CONFIDENTIAL
+Generated 2024-04-01 by billing-export v3
+
+partner_code,contract_value,months_active,renewed
+PC-1,15000,24,yes
+PC-2,2200,6,no
+PC-3,48000,36,yes
+PC-4,900,3,no
+PC-5,7600,12,yes
