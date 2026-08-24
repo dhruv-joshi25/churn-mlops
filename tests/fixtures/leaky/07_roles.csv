@@ -1,0 +1,41 @@
+row_uuid,country_code,free_note,opened_at,score,tenant_label,sku_reference,is_gone
+7f0001-aa,IE,"note about the account, written by an agent note about the account, written by an agent ",2024-02-11,37.25,steady,SKU-07919,1
+7f0002-aa,FR,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-03-12,74.25,steady,SKU-15838,0
+7f0003-aa,DE,"note about the account, written by an agent ",2024-04-13,111.25,steady,SKU-23757,1
+7f0004-aa,GB,"note about the account, written by an agent note about the account, written by an agent ",2024-05-14,148.25,steady,SKU-31676,0
+7f0005-aa,IE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-06-15,185.25,steady,SKU-39595,1
+7f0006-aa,FR,"note about the account, written by an agent ",2024-07-16,222.25,steady,SKU-47514,0
+7f0007-aa,DE,"note about the account, written by an agent note about the account, written by an agent ",2024-08-17,259.25,steady,SKU-55433,1
+7f0008-aa,GB,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-09-18,296.25,steady,SKU-63352,0
+7f0009-aa,IE,"note about the account, written by an agent ",2024-01-10,333.25,steady,SKU-71271,1
+7f0010-aa,FR,"note about the account, written by an agent note about the account, written by an agent ",2024-02-11,370.25,steady,SKU-79190,0
+7f0011-aa,DE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-03-12,407.25,steady,SKU-87109,1
+7f0012-aa,GB,"note about the account, written by an agent ",2024-04-13,444.25,steady,SKU-95028,0
+7f0013-aa,IE,"note about the account, written by an agent note about the account, written by an agent ",2024-05-14,481.25,steady,SKU-02947,1
+7f0014-aa,FR,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-06-15,18.25,steady,SKU-10866,0
+7f0015-aa,DE,"note about the account, written by an agent ",2024-07-16,55.25,steady,SKU-18785,1
+7f0016-aa,GB,"note about the account, written by an agent note about the account, written by an agent ",2024-08-17,92.25,steady,SKU-26704,0
+7f0017-aa,IE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-09-18,129.25,steady,SKU-34623,1
+7f0018-aa,FR,"note about the account, written by an agent ",2024-01-10,166.25,steady,SKU-42542,0
+7f0019-aa,DE,"note about the account, written by an agent note about the account, written by an agent ",2024-02-11,203.25,steady,SKU-50461,1
+7f0020-aa,GB,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-03-12,240.25,steady,SKU-58380,0
+7f0021-aa,IE,"note about the account, written by an agent ",2024-04-13,277.25,steady,SKU-66299,1
+7f0022-aa,FR,"note about the account, written by an agent note about the account, written by an agent ",2024-05-14,314.25,steady,SKU-74218,0
+7f0023-aa,DE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-06-15,351.25,steady,SKU-82137,1
+7f0024-aa,GB,"note about the account, written by an agent ",2024-07-16,388.25,steady,SKU-90056,0
+7f0025-aa,IE,"note about the account, written by an agent note about the account, written by an agent ",2024-08-17,425.25,steady,SKU-97975,1
+7f0026-aa,FR,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-09-18,462.25,steady,SKU-05894,0
+7f0027-aa,DE,"note about the account, written by an agent ",2024-01-10,499.25,steady,SKU-13813,1
+7f0028-aa,GB,"note about the account, written by an agent note about the account, written by an agent ",2024-02-11,36.25,steady,SKU-21732,0
+7f0029-aa,IE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-03-12,73.25,steady,SKU-29651,1
+7f0030-aa,FR,"note about the account, written by an agent ",2024-04-13,110.25,steady,SKU-37570,0
+7f0031-aa,DE,"note about the account, written by an agent note about the account, written by an agent ",2024-05-14,147.25,steady,SKU-45489,1
+7f0032-aa,GB,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-06-15,184.25,steady,SKU-53408,0
+7f0033-aa,IE,"note about the account, written by an agent ",2024-07-16,221.25,steady,SKU-61327,1
+7f0034-aa,FR,"note about the account, written by an agent note about the account, written by an agent ",2024-08-17,258.25,steady,SKU-69246,0
+7f0035-aa,DE,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-09-18,295.25,steady,SKU-77165,1
+7f0036-aa,GB,"note about the account, written by an agent ",2024-01-10,332.25,steady,SKU-85084,0
+7f0037-aa,IE,"note about the account, written by an agent note about the account, written by an agent ",2024-02-11,369.25,steady,SKU-93003,1
+7f0038-aa,FR,"note about the account, written by an agent note about the account, written by an agent note about the account, written by an agent ",2024-03-12,406.25,steady,SKU-00922,0
+7f0039-aa,DE,"note about the account, written by an agent ",2024-04-13,443.25,steady,SKU-08841,1
+7f0040-aa,GB,"note about the account, written by an agent note about the account, written by an agent ",2024-05-14,480.25,steady,SKU-16760,0
