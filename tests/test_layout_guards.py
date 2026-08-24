@@ -172,3 +172,72 @@ def test_the_portal_sends_the_header_the_api_demands():
         f"the portal must send {ADMIN_HEADER} on /reload; the API refuses the "
         "request without it and the reload button would fail with a 403"
     )
+
+
+# ── I1 — no random splitting anywhere in the platform ─────────────────────────
+#
+# CLAUDE.md bans random splits on data with a time dimension, and S5 asks for
+# this guard by name. The reasoning is that a written instruction is forgotten
+# between sessions while a failing build is not: the single most likely wrong
+# line anyone adds to this repository is `train_test_split(X, y,
+# random_state=42)`, because every churn tutorial ever written contains it.
+
+RANDOM_SPLIT_TOKENS = [
+    "train_test_split",
+    "ShuffleSplit",
+    "StratifiedShuffleSplit",
+    "shuffle=True",
+]
+
+# Modules permitted to use a random split, with the reason. Empty on purpose.
+# Adding an entry is a deliberate act that shows up in review; if a genuine case
+# arises, it belongs here with a comment saying why the data has no time
+# dimension.
+RANDOM_SPLIT_ALLOWED: dict[str, str] = {
+    # The Telco reference dataset genuinely has no time column — churnkit's own
+    # schema inference reports timestamp=None for it — and I1 permits a random
+    # split in that case provided the metrics are marked optimistic. This entry
+    # exists so the exception is visible rather than silent, and it disappears
+    # with the module when the platform replaces it.
+    "train.py": "reference implementation; its dataset has no time column (I1)",
+}
+
+
+def _executable_source(path) -> str:
+    """Source with comments and string literals stripped.
+
+    Prose about a banned construct is fine; calling it is not. Comparing raw
+    text cannot tell the two apart, so a module explaining why it never calls
+    train_test_split would fail a guard against train_test_split.
+    """
+    import ast
+
+    class _Blank(ast.NodeTransformer):
+        def visit_Constant(self, node):
+            if isinstance(node.value, str):
+                return ast.copy_location(ast.Constant(value=""), node)
+            return node
+
+    return ast.unparse(_Blank().visit(ast.parse(path.read_text(encoding="utf-8"))))
+
+
+@pytest.mark.parametrize(
+    "path", sorted(SRC.rglob("*.py")), ids=lambda p: p.name
+)
+def test_no_random_splitting_in_the_platform(path):
+    if path.name in RANDOM_SPLIT_ALLOWED:
+        pytest.skip(RANDOM_SPLIT_ALLOWED[path.name])
+    code = _executable_source(path)
+    found = [token for token in RANDOM_SPLIT_TOKENS if token in code]
+    assert not found, (
+        f"{path.name} uses {found}. Churn is temporal: a random split trains on "
+        "the future and evaluates on the past, which overstates every metric it "
+        "touches (I1). Use churnkit.validation.temporal instead."
+    )
+
+
+def test_the_random_split_guard_scans_the_training_code():
+    """A guard that scans nothing passes forever."""
+    scanned = {p.name for p in SRC.rglob("*.py")}
+    assert "train.py" in scanned
+    assert "temporal.py" in scanned
