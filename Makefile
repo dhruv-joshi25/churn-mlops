@@ -1,4 +1,4 @@
-.PHONY: install install-dev install-ui lint format typecheck test coverage \
+.PHONY: clean install install-dev install-ui lint format typecheck test coverage \
         train mlflow api ui docker up down
 
 # Runtime install: the package plus the serving stack (model libraries, FastAPI).
@@ -53,3 +53,13 @@ up:
 
 down:
 	docker compose down -v
+
+# Regenerable caches only. Deliberately does NOT touch mlruns/, models/ or
+# data/: mlruns holds the tracking database and the registered model, so
+# clearing it silently un-registers whatever the API is serving.
+clean:
+	rm -rf .mypy_cache .ruff_cache .pytest_cache .coverage htmlcov build dist
+	rm -rf src/*.egg-info
+	find . -name "__pycache__" -type d -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
+	find . -name "*.pyc" -not -path "./.venv/*" -delete
+	@echo "Cleaned. mlruns/, models/ and data/ left alone on purpose."
